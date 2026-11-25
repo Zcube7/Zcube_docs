@@ -188,6 +188,20 @@ PGR = pity_curve(0.005, 60)                                          # 战双
 NTE = jump(0.0099, 71, 0.195, 90)                                    # 异环（攻略说法）
 P4 = pity_curve(0.051, 10, [(9, 0.51, None)])                        # 原神 4★（社区模型）
 
+
+def base_for_mean(target_mean, hard):
+    """只有硬保底时，反解让 E[N] 等于 target_mean 的基础概率。"""
+    lo, hi = 1e-5, 0.5
+    for _ in range(200):
+        m = (lo + hi) / 2
+        lo, hi = (m, hi) if (1 - (1 - m) ** hard) / m > target_mean else (lo, m)
+    return m
+
+
+# 崩坏3 角色补给：官方只公布「90 抽必得」，基础概率有两种社区说法
+BH3_A = pity_curve(0.015, 90)                                          # 说法 A：基础 1.5% 不变
+BH3_B = pity_curve(base_for_mean(1 / comprehensive_rate(pity_curve(0.015, 100)), 90), 90)  # 说法 B：综合概率维持旧规则
+
 # 保底式：(名称, 曲线, UP 状态机, 井, 井模式, 公示综合概率, E[M], 最坏抽数, 单抽人民币)
 GUARANTEE_STYLE = [
     ("原神·角色活动祈愿", GI, chain_guarantee(0.55), None, None, 0.016, 1.45, 180, 12.83),
@@ -204,6 +218,8 @@ GUARANTEE_STYLE = [
     ("重返未来：1999·限时征集", R99, chain_guarantee(0.5), None, None, 0.0236, 1.5, 140, None),
     ("战双帕弥什·主题角色研发", PGR, chain_always(), None, None, 0.019, 1.0, 60, None),
     ("异环·限定 UP 池", NTE, chain_always(), None, None, None, 1.0, 90, None),
+    ("崩坏3·角色补给（说法 A：基础 1.5%）", BH3_A, chain_always(), None, None, None, 1.0, 90, 22.43),
+    ("崩坏3·角色补给（说法 B：综合 1.925%）", BH3_B, chain_always(), None, None, None, 1.0, 90, 22.43),
 ]
 
 # 井式：把「出 PU」直接当计数事件。(名称, 曲线, 井, 货币, 单抽价格)
@@ -288,6 +304,16 @@ def report():
         s = stats(pulls_to_copies(GI, chain_guarantee(0.55), "free", k))
         rows.append((k, f"{s['mean']:.1f}", s["p10"], s["p50"], s["p90"], 180 * k, f"{s['p90'] / s['mean']:.2f}"))
     table(("份数", "期望", "P10", "中位数", "P90", "最坏", "P90 ÷ 期望"), rows)
+
+    print("崩坏3 角色补给（只有硬保底 90）")
+    rows = []
+    for name, p in [("旧规则：1.5% + 100 抽必出", pity_curve(0.015, 100)), ("说法 A：1.5% + 90 抽必出", BH3_A),
+                    (f"说法 B：{BH3_B[1] * 100:.3f}% + 90 抽必出", BH3_B)]:
+        hard = len(p) - 1
+        s = stats(top_distribution(p))
+        rows.append((name, fmt_pct(comprehensive_rate(p), 3), f"{s['mean']:.1f}", s["p50"],
+                     fmt_pct((1 - p[1]) ** (hard - 1), 1)))
+    table(("规则", "综合概率", "期望", "中位数", "抽满保底的人"), rows)
 
     print("4★ 十连保底：")
     print(f"  只有第 10 抽必出：综合 {fmt_pct(comprehensive_rate(pity_curve(0.051, 10)))}")
